@@ -96,3 +96,201 @@ CREATE TABLE Transacoes (
     descricao VARCHAR(255),
     FOREIGN KEY (id_categoria) REFERENCES Categorias(id_categoria)
 );
+
+CREATE PROCEDURE CalcularSaldoFluxoCaixa
+AS
+BEGIN
+    -- Declarar as variáveis para melhor controle de erros e flexibilidade
+    BEGIN TRY
+        SELECT 
+            SUM(CASE WHEN t.tipo = 'Receita' THEN t.valor ELSE 0 END) AS TotalReceitas,
+            SUM(CASE WHEN t.tipo = 'Despesa' THEN t.valor ELSE 0 END) AS TotalDespesas,
+            SUM(CASE WHEN t.tipo = 'Receita' THEN t.valor ELSE -t.valor END) AS Saldo
+        FROM Transacoes t
+        LEFT JOIN Categorias c ON t.id_categoria = c.id_categoria;
+    END TRY
+    BEGIN CATCH
+        -- Em caso de erro, exibe mensagem
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        RAISERROR (@ErrorMessage, 16, 1);
+    END CATCH
+END;
+
+CREATE PROCEDURE GerarRelatorioReceitasDespesas
+AS
+BEGIN
+    BEGIN TRY
+        -- Seleção dos dados agrupados por Categoria e Tipo
+        SELECT 
+            c.nome_categoria AS Categoria, -- Nome ajustado para o nome correto do atributo
+            t.tipo AS Tipo,               -- Garantido que o tipo está sendo referenciado corretamente
+            SUM(t.valor) AS Total
+        FROM Transacoes t
+        LEFT JOIN Categorias c 
+            ON t.id_categoria = c.id_categoria
+        GROUP BY c.nome_categoria, t.tipo; -- Correção na referência dos campos no GROUP BY
+    END TRY
+    BEGIN CATCH
+        -- Tratamento de erros
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        RAISERROR (@ErrorMessage, 16, 1);
+    END CATCH
+END;
+
+CREATE PROCEDURE GerarRelatorioReceitasDespesas
+AS
+BEGIN
+    BEGIN TRY
+        -- Seleção dos dados agrupados por Categoria e Tipo
+        SELECT 
+            c.nome_categoria AS Categoria, -- Nome ajustado para o nome correto do atributo
+            t.tipo AS Tipo,               -- Garantido que o tipo está sendo referenciado corretamente
+            SUM(t.valor) AS Total
+        FROM Transacoes t
+        LEFT JOIN Categorias c 
+            ON t.id_categoria = c.id_categoria
+        GROUP BY c.nome_categoria, t.tipo; -- Correção na referência dos campos no GROUP BY
+    END TRY
+    BEGIN CATCH
+        -- Tratamento de erros
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        RAISERROR (@ErrorMessage, 16, 1);
+    END CATCH
+END;
+
+CREATE PROCEDURE ProjetarFluxoCaixaFuturo
+    @Meses INT
+AS
+BEGIN
+    -- Declarar variáveis para cálculos
+    DECLARE @ReceitaMensal DECIMAL(10, 2) = 0;
+    DECLARE @DespesaMensal DECIMAL(10, 2) = 0;
+    DECLARE @SaldoProjecao DECIMAL(10, 2) = 0;
+
+    BEGIN TRY
+        -- Calcular média mensal de receitas
+        SELECT 
+            @ReceitaMensal = ISNULL(SUM(valor) / NULLIF(COUNT(DISTINCT DATEPART(MONTH, data)), 0), 0)
+        FROM Transacoes t
+        INNER JOIN Categorias c ON t.id_categoria = c.id_categoria
+        WHERE c.tipo = 'Receita';
+
+        -- Calcular média mensal de despesas
+        SELECT 
+            @DespesaMensal = ISNULL(SUM(valor) / NULLIF(COUNT(DISTINCT DATEPART(MONTH, data)), 0), 0)
+        FROM Transacoes t
+        INNER JOIN Categorias c ON t.id_categoria = c.id_categoria
+        WHERE c.tipo = 'Despesa';
+
+        -- Calcular projeção de saldo futuro
+        SET @SaldoProjecao = (@ReceitaMensal - @DespesaMensal) * @Meses;
+
+        -- Exibir projeção
+        SELECT 
+            @ReceitaMensal AS Receita_Media_Mensal,
+            @DespesaMensal AS Despesa_Media_Mensal,
+            @SaldoProjecao AS Projecao_Fluxo_Caixa;
+
+    END TRY
+    BEGIN CATCH
+        -- Tratamento de erros
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        RAISERROR (@ErrorMessage, 16, 1);
+    END CATCH
+END;
+
+CREATE PROCEDURE ValidarInsercaoTransacao
+    @Data DATETIME,
+    @Valor DECIMAL(10, 2),
+    @IdCategoria INT,
+    @IdMetodo INT,
+    @Descricao NVARCHAR(200)
+AS
+BEGIN
+    BEGIN TRY
+        -- Verificar se o valor é maior que zero
+        IF @Valor <= 0
+        BEGIN
+            THROW 50001, 'O valor da transação deve ser maior que zero.', 1;
+        END;
+
+        -- Verificar se a categoria existe
+        IF NOT EXISTS (SELECT 1 FROM Categorias WHERE id_categoria = @IdCategoria)
+        BEGIN
+            THROW 50002, 'Categoria inválida. Verifique o ID da categoria.', 1;
+        END;
+
+        -- Inserir a transação se todos os dados forem válidos
+        INSERT INTO Transacoes (data, valor, id_categoria, id_metodo, descricao)
+        VALUES (@Data, @Valor, @IdCategoria, @IdMetodo, @Descricao);
+
+        PRINT 'Transação inserida com sucesso.';
+    END TRY
+    BEGIN CATCH
+        -- Capturar erros e retornar mensagem personalizada
+        DECLARE @ErrorMessage NVARCHAR(4000);
+        DECLARE @ErrorSeverity INT;
+        DECLARE @ErrorState INT;
+
+        SELECT 
+            @ErrorMessage = ERROR_MESSAGE(),
+            @ErrorSeverity = ERROR_SEVERITY(),
+            @ErrorState = ERROR_STATE();
+
+        RAISERROR (@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
+
+CREATE FUNCTION CalcularVPL (
+    @InvestimentoInicial DECIMAL(10, 2),
+    @TaxaDesconto DECIMAL(10, 4)
+)
+RETURNS @Resultado TABLE (
+    VPL DECIMAL(18, 2)
+)
+AS
+BEGIN
+    DECLARE @VPL DECIMAL(18, 2) = 0
+   
+    DECLARE @FluxosCaixa TABLE 
+   END  
+CREATE PROCEDURE CalcularTIR
+    @InvestimentoInicial DECIMAL(18, 2),
+    @FluxosCaixa TABLE (Periodo INT, Valor DECIMAL(18, 2)),
+    @IteracoesMaximas INT = 1000,
+    @Precisao DECIMAL(10, 6) = 0.000001,
+    @TIR DECIMAL(10, 6) OUTPUT
+AS
+BEGIN
+    DECLARE @Taxa DECIMAL(10, 6) = 0.10; -- Chute inicial (10%)
+    DECLARE @VPL DECIMAL(18, 2);
+    DECLARE @Delta DECIMAL(10, 6);
+    DECLARE @Iteracao INT = 0;
+    WHILE @Iteracao < @IteracoesMaximas
+    BEGIN
+        -- Calcular o VPL atual
+        SET @VPL = 0;
+        SELECT @VPL = @VPL + (Valor / POWER(1 + @Taxa, Periodo))
+        FROM @FluxosCaixa;
+        SET @VPL = @VPL - @InvestimentoInicial;
+
+        -- Calcular derivada aproximada (f'(r)) usando perturbação
+        DECLARE @VPLDerivada DECIMAL(18, 2) = 0;
+        SELECT @VPLDerivada = @VPLDerivada + (-Periodo * Valor / POWER(1 + @Taxa, Periodo + 1))
+        FROM @FluxosCaixa;
+        -- Ajustar delta com base na derivada
+        IF ABS(@VPLDerivada) < @Precisao BREAK; -- Evitar divisão por zero
+        SET @Delta = @VPL / @VPLDerivada;
+        -- Verificar a precisão
+        IF ABS(@Delta) < @Precisao
+            BREAK;
+        -- Atualizar a taxa
+        SET @Taxa = @Taxa - @Delta;
+        SET @Iteracao = @Iteracao + 1;
+    END;
+    -- Retornar a TIR calculada
+    SET @TIR = @Taxa;
+END;
+GO
+
+
